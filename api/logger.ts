@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import fetch from 'node-fetch';
 
-const WEBHOOK_URL = 'YOUR_DISCORD_WEBHOOK_URL';
+const WEBHOOK_URL = 'https://discord.com/api/webhooks/1421152095368642762/q7ptPLwZNW3IyAZSLi3n8VYA2g1dMOrdXqX-sR0D5lUipBu5_EaNNBa3Otxuy07dHzBd';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Method not allowed' });
